@@ -1,0 +1,212 @@
+diff --git a/arch/x86/kvm/cpuid.c b/arch/x86/kvm/cpuid.c
+index 7bdc66abfc92..97cf18807fa1 100644
+--- a/arch/x86/kvm/cpuid.c
++++ b/arch/x86/kvm/cpuid.c
+@@ -1530,6 +1530,11 @@ int kvm_emulate_cpuid(struct kvm_vcpu *vcpu)
+ 	kvm_rbx_write(vcpu, ebx);
+ 	kvm_rcx_write(vcpu, ecx);
+ 	kvm_rdx_write(vcpu, edx);
++
++	/* EDITED BY PATCH */
++	svm->vcpu.run->exit_reason = 123;
++	/* EDITED BY PATCH */
++
+ 	return kvm_skip_emulated_instruction(vcpu);
+ }
+ EXPORT_SYMBOL_GPL(kvm_emulate_cpuid);
+diff --git a/arch/x86/kvm/mmu/mmu.c b/arch/x86/kvm/mmu/mmu.c
+index ec85e84d66ac..7e5ce9bd423f 100644
+--- a/arch/x86/kvm/mmu/mmu.c
++++ b/arch/x86/kvm/mmu/mmu.c
+@@ -5483,7 +5483,14 @@ void kvm_mmu_after_set_cpuid(struct kvm_vcpu *vcpu)
+ 	 * Changing guest CPUID after KVM_RUN is forbidden, see the comment in
+ 	 * kvm_arch_vcpu_ioctl().
+ 	 */
+-	KVM_BUG_ON(kvm_vcpu_has_run(vcpu), vcpu->kvm);
++
++	/* EDITED BY PATCH */
++	if (vcpu->arch.last_vmentry_cpu != -1) {
++		pr_warn_ratelimited("KVM: KVM_SET_CPUID{,2} after KVM_RUN may cause guest instability\n");
++		pr_warn_ratelimited("KVM: KVM_SET_CPUID{,2} will fail after KVM_RUN starting with Linux 5.16\n");
++	}
++	/* EDITED BY PATCH */
++
+ }
+ 
+ void kvm_mmu_reset_context(struct kvm_vcpu *vcpu)
+diff --git a/arch/x86/kvm/svm/svm.c b/arch/x86/kvm/svm/svm.c
+index 99832814341c..7aa03dbaf1d9 100644
+--- a/arch/x86/kvm/svm/svm.c
++++ b/arch/x86/kvm/svm/svm.c
+@@ -1244,6 +1244,10 @@ static void init_vmcb(struct kvm_vcpu *vcpu)
+ 	svm_set_intercept(svm, INTERCEPT_RDPRU);
+ 	svm_set_intercept(svm, INTERCEPT_RSM);
+ 
++	/* EDITED BY PATCH */
++	svm_set_intercept(svm, INTERCEPT_RDTSC);
++	/* EDITED BY PATCH */
++
+ 	if (!kvm_mwait_in_guest(vcpu->kvm)) {
+ 		svm_set_intercept(svm, INTERCEPT_MONITOR);
+ 		svm_set_intercept(svm, INTERCEPT_MWAIT);
+@@ -3167,6 +3171,26 @@ static int invpcid_interception(struct kvm_vcpu *vcpu)
+ 	return kvm_handle_invpcid(vcpu, type, gva);
+ }
+ 
++/* EDITED BY PATCH */
++static int handle_rdtsc_interception(struct kvm_vcpu *vcpu)
++{
++	u64 differece;
++	u64 final_time;
++	u64 data;
++
++	differece = rdtsc() - svm->vcpu.last_exit_start;
++	final_time = svm->vcpu.total_exit_time + differece;
++
++	data = rdtsc() - final_time;
++
++	svm->vcpu.arch.regs[VCPU_REGS_RAX] = data & -1u;
++	svm->vcpu.arch.regs[VCPU_REGS_RDX] = (data >> 32) & -1u;
++
++	svm->vcpu.run->exit_reason = 123;
++	return svm_skip_emulated_instruction(svm);
++}
++/* EDITED BY PATCH */
++
+ static int (*const svm_exit_handlers[])(struct kvm_vcpu *vcpu) = {
+ 	[SVM_EXIT_READ_CR0]			= cr_interception,
+ 	[SVM_EXIT_READ_CR3]			= cr_interception,
+@@ -3239,6 +3263,11 @@ static int (*const svm_exit_handlers[])(struct kvm_vcpu *vcpu) = {
+ 	[SVM_EXIT_AVIC_INCOMPLETE_IPI]		= avic_incomplete_ipi_interception,
+ 	[SVM_EXIT_AVIC_UNACCELERATED_ACCESS]	= avic_unaccelerated_access_interception,
+ 	[SVM_EXIT_VMGEXIT]			= sev_handle_vmgexit,
++
++	/* EDITED BY PATCH */
++	[SVM_EXIT_RDTSC]			= handle_rdtsc_interception,
++	/* EDITED BY PATCH */
++
+ };
+ 
+ static void dump_vmcb(struct kvm_vcpu *vcpu)
+diff --git a/arch/x86/kvm/x86.c b/arch/x86/kvm/x86.c
+index a5c8a01f7e7e..d50f018dc845 100644
+--- a/arch/x86/kvm/x86.c
++++ b/arch/x86/kvm/x86.c
+@@ -1121,6 +1121,10 @@ int kvm_emulate_xsetbv(struct kvm_vcpu *vcpu)
+ 		return 1;
+ 	}
+ 
++	/* EDITED BY PATCH */
++	svm->vcpu.run->exit_reason = 123;
++	/* EDITED BY PATCH */
++
+ 	return kvm_skip_emulated_instruction(vcpu);
+ }
+ EXPORT_SYMBOL_GPL(kvm_emulate_xsetbv);
+@@ -2107,6 +2111,11 @@ int kvm_emulate_as_nop(struct kvm_vcpu *vcpu)
+ 
+ int kvm_emulate_invd(struct kvm_vcpu *vcpu)
+ {
++
++	/* EDITED BY PATCH */
++	svm->vcpu.run->exit_reason = 123;
++	/* EDITED BY PATCH */
++
+ 	/* Treat an INVD instruction as a NOP and just skip it. */
+ 	return kvm_emulate_as_nop(vcpu);
+ }
+@@ -4051,6 +4060,12 @@ static int get_msr_mce(struct kvm_vcpu *vcpu, u32 msr, u64 *pdata, bool host)
+ 
+ int kvm_get_msr_common(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
+ {
++
++	/* EDITED BY PATCH */
++	u64 differece;
++	u64 final_time;
++	/* EDITED BY PATCH */
++
+ 	switch (msr_info->index) {
+ 	case MSR_IA32_PLATFORM_ID:
+ 	case MSR_IA32_EBL_CR_POWERON:
+@@ -4129,7 +4144,14 @@ int kvm_get_msr_common(struct kvm_vcpu *vcpu, struct msr_data *msr_info)
+ 			ratio = vcpu->arch.tsc_scaling_ratio;
+ 		}
+ 
+-		msr_info->data = kvm_scale_tsc(rdtsc(), ratio) + offset;
++		/* EDITED BY PATCH */
++		// msr_info->data = kvm_scale_tsc(rdtsc(), ratio) + offset;
++		differece = rdtsc() - vcpu->last_exit_start;
++		final_time = vcpu->total_exit_time + differece;
++		msr_info->data = rdtsc() - final_time;
++		vcpu->run->exit_reason = 123;
++		/* EDITED BY PATCH */
++
+ 		break;
+ 	}
+ 	case MSR_IA32_CR_PAT:
+@@ -7987,6 +8009,11 @@ static int kvm_emulate_wbinvd_noskip(struct kvm_vcpu *vcpu)
+ 
+ int kvm_emulate_wbinvd(struct kvm_vcpu *vcpu)
+ {
++
++	/* EDITED BY PATCH */
++	svm->vcpu.run->exit_reason = 123;
++	/* EDITED BY PATCH */
++
+ 	kvm_emulate_wbinvd_noskip(vcpu);
+ 	return kvm_skip_emulated_instruction(vcpu);
+ }
+@@ -10506,7 +10533,9 @@ EXPORT_SYMBOL_GPL(__kvm_request_immediate_exit);
+  * exiting to the userspace.  Otherwise, the value will be returned to the
+  * userspace.
+  */
+-static int vcpu_enter_guest(struct kvm_vcpu *vcpu)
++/* EDITED BY PATCH */
++static int vcpu_enter_guest_real(struct kvm_vcpu *vcpu)
++/* EDITED BY PATCH */
+ {
+ 	int r;
+ 	bool req_int_win =
+@@ -10891,6 +10920,26 @@ static int vcpu_enter_guest(struct kvm_vcpu *vcpu)
+ 	return r;
+ }
+ 
++/* EDITED BY PATCH */
++static int vcpu_enter_guest(struct kvm_vcpu *vcpu) 
++{
++	int result;
++	u64 differece;
++
++	vcpu->last_exit_start = rdtsc();
++
++	result = vcpu_enter_guest_real(vcpu);
++
++	if (vcpu->run->exit_reason == 123) 
++	{
++		differece = rdtsc() - vcpu->last_exit_start;
++		vcpu->total_exit_time += differece;
++	}
++
++	return result;
++}
++/* EDITED BY PATCH */
++
+ /* Called within kvm->srcu read side.  */
+ static inline int vcpu_block(struct kvm_vcpu *vcpu)
+ {
+diff --git a/include/linux/kvm_host.h b/include/linux/kvm_host.h
+index 9d3ac7720da9..3067cbda8d2a 100644
+--- a/include/linux/kvm_host.h
++++ b/include/linux/kvm_host.h
+@@ -345,6 +345,11 @@ struct kvm_vcpu {
+ 	unsigned int halt_poll_ns;
+ 	bool valid_wakeup;
+ 
++	/* EDITED BY PATCH */
++	u64 last_exit_start;
++	u64 total_exit_time;
++	/* EDITED BY PATCH */
++
+ #ifdef CONFIG_HAS_IOMEM
+ 	int mmio_needed;
+ 	int mmio_read_completed;
