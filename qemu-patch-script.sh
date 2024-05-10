@@ -1,5 +1,6 @@
-
 #!/bin/bash
+# https://github.com/kevoreilly/CAPEv2/blob/fa94c917659a24a412ae793a54e2be48e5f15ec7/installer/kvm-qemu.sh
+
 
 #replace all occurances of CPU's in qemu with our fake one
 cpuid="Intel(R) Core(TM) i3-4130 CPU"
